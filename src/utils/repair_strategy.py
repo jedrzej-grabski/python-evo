@@ -4,8 +4,8 @@ from typing import Tuple
 from numpy.typing import NDArray
 import numpy as np
 
-from des.utils.boundary_handlers import BoundaryHandler
-from des.utils.helpers import delete_inf_nan
+from src.utils.boundary_handlers import BoundaryHandler
+from src.utils.helpers import delete_inf_nan
 
 
 class RepairStrategyType(Enum):
