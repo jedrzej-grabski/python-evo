@@ -13,9 +13,28 @@ class MFCMAESLogData(BaseLogData):
     """MF-CMA-ES-specific log data."""
 
     sigma: list[float] = field(default_factory=list)
+    """Step size values"""
+
     p_succ: list[float] = field(default_factory=list)
+    """Success probability (PPMF)"""
+
     midpoint_fitness: list[float] = field(default_factory=list)
+    """Fitness at distribution mean"""
+
     constraint_violations: list[int] = field(default_factory=list)
+    """Number of constraint violations per generation"""
+
+    pc: list[NDArray[np.float64]] = field(default_factory=list)
+    """Evolution path for covariance"""
+
+    pc_norm: list[float] = field(default_factory=list)
+    """Norm of evolution path"""
+
+    mean_vector: list[NDArray[np.float64]] = field(default_factory=list)
+    """Distribution mean vector"""
+
+    mean_vector_norm: list[float] = field(default_factory=list)
+    """Norm of mean vector"""
 
     def clear(self) -> None:
         self.clear_common()
@@ -23,6 +42,10 @@ class MFCMAESLogData(BaseLogData):
         self.p_succ.clear()
         self.midpoint_fitness.clear()
         self.constraint_violations.clear()
+        self.pc.clear()
+        self.pc_norm.clear()
+        self.mean_vector.clear()
+        self.mean_vector_norm.clear()
 
     def to_dict(self) -> dict[str, list[Any]]:
         result = self.to_dict_common()
@@ -32,6 +55,10 @@ class MFCMAESLogData(BaseLogData):
                 "p_succ": self.p_succ,
                 "midpoint_fitness": self.midpoint_fitness,
                 "constraint_violations": self.constraint_violations,
+                "pc": self.pc,
+                "pc_norm": self.pc_norm,
+                "mean_vector": self.mean_vector,
+                "mean_vector_norm": self.mean_vector_norm,
             }
         )
         return result
@@ -60,7 +87,8 @@ class MFCMAESLogger(BaseLogger[MFCMAESLogData]):
         fitness: NDArray[np.float64] | None = None,
         population: NDArray[np.float64] | None = None,
         best_solution: NDArray[np.float64] | None = None,
-        eigenvalues: NDArray[np.float64] | None = None,
+        pc: NDArray[np.float64] | None = None,
+        mean_vector: NDArray[np.float64] | None = None,
         **kwargs,
     ) -> None:
         self.logs.iteration.append(iteration)
@@ -84,9 +112,12 @@ class MFCMAESLogger(BaseLogger[MFCMAESLogData]):
         if best_solution is not None:
             self.logs.best_solution.append(best_solution.copy())
 
-        if eigenvalues is not None and self.config.diag_eigen:
-            self.logs.eigenvalues.append(eigenvalues.copy())
-            if len(eigenvalues) > 0:
-                self.logs.condition_number.append(
-                    eigenvalues[0] / max(1e-300, eigenvalues[-1])
-                )
+        # Evolution path
+        if pc is not None:
+            self.logs.pc.append(pc.copy())
+            self.logs.pc_norm.append(float(np.linalg.norm(pc)))
+
+        # Mean vector
+        if mean_vector is not None:
+            self.logs.mean_vector.append(mean_vector.copy())
+            self.logs.mean_vector_norm.append(float(np.linalg.norm(mean_vector)))

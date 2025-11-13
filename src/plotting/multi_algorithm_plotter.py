@@ -324,9 +324,10 @@ class MultiAlgorithmPlotter:
     def _plot_mfcmaes_metrics(
         self, log_data: MFCMAESLogData, save_path: Optional[Union[str, Path]] = None
     ) -> Figure:
-        """Plot MF-CMA-ES specific metrics."""
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-        axes = axes.flatten()
+        """Plot comprehensive MF-CMA-ES-specific metrics in 4 panels (similar to CMA-ES)."""
+        fig = plt.figure(figsize=(20, 16))
+
+        gs = fig.add_gridspec(4, 2, hspace=0.3, wspace=0.3)
 
         # Use evaluations for x-axis
         evals = (
@@ -335,92 +336,110 @@ class MultiAlgorithmPlotter:
             else range(len(log_data.best_fitness))
         )
 
-        # Plot 1: Convergence
+        # ============ PANEL 1: Objective Statistics ============
+        ax1 = fig.add_subplot(gs[0, 0])
         if log_data.best_fitness:
-            axes[0].semilogy(
-                evals, log_data.best_fitness, "b-", linewidth=2, label="Best"
-            )
-            if log_data.mean_fitness:
-                axes[0].semilogy(
-                    evals,
-                    log_data.mean_fitness,
-                    "r--",
-                    linewidth=1.7,
-                    alpha=0.8,
-                    label="Mean",
-                )
-            axes[0].set_title("Convergence (Best / Mean)")
-            axes[0].set_xlabel("Function Evaluations")
-            axes[0].set_ylabel("Fitness")
-            axes[0].grid(True, alpha=0.3)
-            axes[0].legend()
-
-        # Plot 2: Step-size (sigma) evolution
-        if hasattr(log_data, "sigma") and log_data.sigma:
-            axes[1].plot(evals, log_data.sigma, "g-", linewidth=2)
-            axes[1].set_title("Step Size (sigma) Evolution")
-            axes[1].set_xlabel("Function Evaluations")
-            axes[1].set_ylabel("Sigma")
-            axes[1].grid(True, alpha=0.3)
-
-        # Plot 3: Success probability p_succ
-        if hasattr(log_data, "p_succ") and log_data.p_succ:
-            axes[2].plot(evals, log_data.p_succ, "m-", linewidth=2, label="p_succ")
-            # Target reference (commonly 0.2)
-            target = 0.2
-            axes[2].axhline(
-                target, color="k", linestyle="--", linewidth=1, label="Target"
-            )
-            axes[2].set_ylim(0, 1)
-            axes[2].set_title("Success Probability (p_succ)")
-            axes[2].set_xlabel("Function Evaluations")
-            axes[2].set_ylabel("p_succ")
-            axes[2].grid(True, alpha=0.3)
-            axes[2].legend()
-
-        # Plot 4: Midpoint fitness and constraint violations
-        has_mid = hasattr(log_data, "midpoint_fitness") and log_data.midpoint_fitness
-        has_cv = (
-            hasattr(log_data, "constraint_violations")
-            and log_data.constraint_violations
-        )
-        if has_mid or has_cv:
-            ax4 = axes[3]
-            if has_mid:
-                ax4.semilogy(
+            ax1.semilogy(evals, log_data.best_fitness, "b-", linewidth=2, label="Best")
+            if log_data.midpoint_fitness:
+                ax1.semilogy(
                     evals,
                     log_data.midpoint_fitness,
-                    "c-",
-                    linewidth=2,
-                    label="Midpoint Fitness",
+                    "g--",
+                    linewidth=1.5,
+                    label="Midpoint f(m)",
                 )
-                ax4.set_ylabel("Midpoint Fitness (log)")
+            if log_data.mean_fitness:
+                ax1.semilogy(
+                    evals,
+                    log_data.mean_fitness,
+                    "r:",
+                    linewidth=1.5,
+                    label="Mean",
+                )
+            ax1.set_xlabel("Function Evaluations")
+            ax1.set_ylabel("Fitness (log scale)")
+            ax1.set_title("Convergence: Best, Midpoint, Mean Fitness")
+            ax1.legend()
+            ax1.grid(True, alpha=0.3)
+
+        ax2 = fig.add_subplot(gs[0, 1])
+        if log_data.std_fitness:
+            ax2.semilogy(evals, log_data.std_fitness, "purple", linewidth=2)
+            ax2.set_xlabel("Function Evaluations")
+            ax2.set_ylabel("Std Dev (log scale)")
+            ax2.set_title("Fitness Standard Deviation")
+            ax2.grid(True, alpha=0.3)
+
+        # ============ PANEL 2: Step-Size Adaptation (PPMF) ============
+        ax3 = fig.add_subplot(gs[1, 0])
+        if log_data.sigma:
+            ax3.semilogy(evals, log_data.sigma, "orange", linewidth=2)
+            ax3.set_xlabel("Function Evaluations")
+            ax3.set_ylabel("σ (log scale)")
+            ax3.set_title("Step-Size Evolution (PPMF)")
+            ax3.grid(True, alpha=0.3)
+
+        ax4 = fig.add_subplot(gs[1, 1])
+        if log_data.p_succ:
+            ax4.plot(evals, log_data.p_succ, "m-", linewidth=2, label="p_succ")
+            ax4.axhline(
+                0.2,
+                color="k",
+                linestyle="--",
+                linewidth=1,
+                label=f"Target ({0.2})",
+            )
             ax4.set_xlabel("Function Evaluations")
-            ax4.set_title("Midpoint Fitness / Constraint Violations")
+            ax4.set_ylabel("Success Probability")
+            ax4.set_title("PPMF Success Probability")
+            ax4.set_ylim([0, 1])
+            ax4.legend()
             ax4.grid(True, alpha=0.3)
 
-            if has_cv:
-                ax4b = ax4.twinx()
-                ax4b.plot(
-                    evals,
-                    log_data.constraint_violations,
-                    "y--",
-                    linewidth=1.5,
-                    label="Constraint Violations",
+        # ============ PANEL 3: Archive and Constraint Info ============
+        ax5 = fig.add_subplot(gs[2, 0])
+        if log_data.constraint_violations:
+            ax5.plot(evals, log_data.constraint_violations, "red", linewidth=2)
+            ax5.set_xlabel("Function Evaluations")
+            ax5.set_ylabel("Violations")
+            ax5.set_title("Constraint Violations")
+            ax5.grid(True, alpha=0.3)
+
+        ax6 = fig.add_subplot(gs[2, 1])
+        if log_data.best_fitness and log_data.worst_fitness:
+            ax6.semilogy(evals, log_data.best_fitness, "b-", linewidth=2, label="Best")
+            ax6.semilogy(
+                evals, log_data.worst_fitness, "r-", linewidth=2, label="Worst"
+            )
+            if log_data.mean_fitness:
+                ax6.semilogy(
+                    evals, log_data.mean_fitness, "g--", linewidth=1.5, label="Mean"
                 )
-                ax4b.set_ylabel("Constraint Violations")
+            ax6.set_xlabel("Function Evaluations")
+            ax6.set_ylabel("Fitness (log scale)")
+            ax6.set_title("Fitness Statistics (Best/Mean/Worst)")
+            ax6.legend()
+            ax6.grid(True, alpha=0.3)
 
-                # Combined legend
-                lines = []
-                labels = []
-                for ax_ in (ax4, ax4b):
-                    h, l = ax_.get_legend_handles_labels()
-                    lines.extend(h)
-                    labels.extend(l)
-                ax4.legend(lines, labels, loc="upper right")
+        # ============ PANEL 4: Evolution Path and Mean Vector ============
+        ax7 = fig.add_subplot(gs[3, 0])
+        if log_data.pc_norm:
+            ax7.plot(evals, log_data.pc_norm, "b-", linewidth=2, label="||p_c||")
+            ax7.set_xlabel("Function Evaluations")
+            ax7.set_ylabel("Path Norm")
+            ax7.set_title("Evolution Path Norm")
+            ax7.legend()
+            ax7.grid(True, alpha=0.3)
 
-        plt.suptitle("MF-CMA-ES Algorithm Metrics", fontsize=16)
-        plt.tight_layout()
+        ax8 = fig.add_subplot(gs[3, 1])
+        if log_data.mean_vector_norm:
+            ax8.semilogy(evals, log_data.mean_vector_norm, "darkgreen", linewidth=2)
+            ax8.set_xlabel("Function Evaluations")
+            ax8.set_ylabel("||m|| (log scale)")
+            ax8.set_title("Mean Vector Norm (Distance from Origin)")
+            ax8.grid(True, alpha=0.3)
+
+        plt.suptitle("MF-CMA-ES Comprehensive Diagnostics", fontsize=18, y=0.995)
 
         if save_path:
             fig.savefig(save_path, dpi=300, bbox_inches="tight")

@@ -1,26 +1,35 @@
-from __future__ import annotations
-from typing import Tuple
+from typing import Callable, final, Union, TYPE_CHECKING
 import numpy as np
 from numpy.typing import NDArray
 
-from src.core.base_optimizer import BaseOptimizer, OptimizationResult
 from src.algorithms.choices import AlgorithmChoice
 from src.algorithms.mfcmaes.mfcmaes_config import MFCMAESConfig
-from src.utils.helpers import norm
-from src.utils.boundary_handlers import BoundaryHandler
+from src.utils.boundary_handlers import BoundaryHandler, BoundaryHandlerType
+from src.core.base_optimizer import BaseOptimizer, OptimizationResult
+from src.logging.mfcmaes_logger import MFCMAESLogger
+
+if TYPE_CHECKING:
+    from src.logging.mfcmaes_logger import MFCMAESLogData
 
 
-class MFCMAESOptimizer(BaseOptimizer, tuple[()]):
+@final
+class MFCMAESOptimizer(BaseOptimizer["MFCMAESLogData", MFCMAESConfig]):
+    """Matrix-Free CMA-ES optimizer implementation."""
+
     def __init__(
         self,
-        func,
+        func: Callable[[NDArray[np.float64]], float],
         initial_point: NDArray[np.float64],
-        config: MFCMAESConfig,
+        config: MFCMAESConfig | None = None,
         boundary_handler: BoundaryHandler | None = None,
-        boundary_strategy=None,
-        lower_bounds=-100.0,
-        upper_bounds=100.0,
-    ):
+        boundary_strategy: BoundaryHandlerType | None = None,
+        lower_bounds: Union[float, NDArray[np.float64], list[float]] = -100.0,
+        upper_bounds: Union[float, NDArray[np.float64], list[float]] = 100.0,
+    ) -> None:
+
+        if config is None:
+            config = MFCMAESConfig(dimensions=len(initial_point))
+
         super().__init__(
             func=func,
             initial_point=initial_point,
@@ -32,315 +41,283 @@ class MFCMAESOptimizer(BaseOptimizer, tuple[()]):
             upper_bounds=upper_bounds,
         )
 
-        if config.seed is not None:
-            np.random.seed(config.seed)
+        self.logger = MFCMAESLogger(config=self.config)
 
-    def _init_strategy(self) -> dict:
-        N = self.dimensions
-        lam = self.config.population_size
-        mu = self.config.mu if self.config.mu is not None else int(np.floor(lam / 2))
+        self.mean = self.initial_point.copy()
+        self.sigma = self.config.sigma
+        self.pc = np.zeros(self.config.dimensions)
 
-        if self.config.equal_weights:
-            weights = np.ones(mu) / mu
-        else:
-            # Optional: log weights (not used in provided R code)
-            ranks = np.arange(1, mu + 1)
-            weights = np.log(mu + 0.5) - np.log(ranks)
-            weights = weights / np.sum(weights)
+        # p_history: evolution paths (dimensions x window)
+        self.p_history = np.zeros((self.config.dimensions, self.config.window))
 
-        mueff = (np.sum(weights) ** 2) / np.sum(weights**2)
-        cc = 4.0 / (N + 4.0)
-        cs = (mueff + 2.0) / (N + mueff + 3.0)
-        mucov = mueff
-        ccov = (1.0 / mucov) * 2.0 / (N + 1.4) ** 2 + (1.0 - 1.0 / mucov) * (
-            (2.0 * mucov - 1.0) / ((N + 2.0) ** 2 + 2.0 * mucov)
+        # d_history: selected difference vectors (dimensions x window*mu)
+        self.d_history = np.zeros(
+            (self.config.dimensions, self.config.window * self.config.mu)
         )
-        c_mu = ccov * (1.0 - 1.0 / mucov)
-        c_1 = ccov - c_mu
-        damps = 1.0 + 2.0 * max(0.0, np.sqrt((mueff - 1.0) / (N + 1.0)) - 1.0) + cs
 
-        window = int(self.config.window)
-        t_idx = np.arange(1, max(2, self.config.max_iterations) + 1)
-        decay_table = (1.0 - ccov) ** ((t_idx - 1.0) / 2.0)
+        self.prev_midpoint_fitness = np.inf
+        self.current_midpoint_fitness = np.inf
+        self.p_succ = 0.0
 
-        return {
-            "N": N,
-            "lambda": lam,
-            "mu": mu,
-            "weights": weights,
-            "mueff": mueff,
-            "cc": cc,
-            "cs": cs,
-            "mucov": mucov,
-            "ccov": ccov,
-            "c_mu": c_mu,
-            "c_1": c_1,
-            "damps": damps,
-            "window": window,
-            "decay_table": decay_table,
-        }
+        self._precompute_decay_table()
 
-    @staticmethod
-    def _rotate_right(v: NDArray[np.float64], n: int) -> NDArray[np.float64]:
-        if len(v) == 0:
-            return v
-        n = n % len(v)
-        if n == 0:
-            return v
-        return np.concatenate([v[-n:], v[:-n]])
+        self.constraint_violations = 0
 
-    def _generate_population(
-        self,
-        xmean: NDArray[np.float64],
-        sigma: float,
-        state: dict,
-        d_history: NDArray[np.float64],  # shape (N, window*mu)
-        p_history: NDArray[np.float64],  # shape (N, window)
-        t: int,
-    ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
-        N = state["N"]
-        lam = state["lambda"]
-        mu = state["mu"]
-        c_mu = state["c_mu"]
-        c_1 = state["c_1"]
-        ccov = state["ccov"]
-        window = state["window"]
-        decay_table = state["decay_table"]
-        weights = state["weights"]
+    def _precompute_decay_table(self) -> None:
+        """Precompute the decay factors (1 - c_cov)^((t-τ)/2) for the archive."""
+        t = np.arange(1, self.config.maxit + 1)
+        self.decay_table = (1 - self.config.c_cov) ** ((t - 1) / 2)
 
-        # Prepare time-decay vector for last `window` generations
-        base_decay = decay_table[:window][::-1]  # same as R: decay_table[window:1]
-        decay = self._rotate_right(base_decay, t - 1)  # align with current t
+    def _p_index(self, t: int) -> int:
+        """Get the index in p_history for generation t (circular buffer)."""
+        return (t - 1) % self.config.window
 
-        # Scale vectors for rank-mu component
-        decay_rep = np.repeat(decay, mu)  # length window*mu
-        w = np.tile(
-            np.sqrt(weights), window
-        )  # length window*mu (match d_history column layout)
+    def _d_range(self, t: int) -> tuple[int, int]:
+        """Get the slice range in d_history for generation t."""
+        start = self._p_index(t) * self.config.mu
+        end = start + self.config.mu
+        return start, end
 
-        # Random mixes
-        r_mu = np.random.randn(window * mu, lam)  # (window*mu) x lam
-        inner_sum = d_history @ (r_mu * (decay_rep * w)[:, None])  # N x lam
-        rank_mu = np.sqrt(c_mu) * inner_sum
+    def _shift_array(self, arr: NDArray[np.float64], n: int) -> NDArray[np.float64]:
+        """Circular shift array by n positions."""
+        n = n % len(arr)
+        return np.concatenate([arr[-n:], arr[:-n]])
 
-        r_1 = np.random.randn(window, lam)  # window x lam
-        rank_1 = np.sqrt(c_1) * (p_history @ (r_1 * decay[:, None]))  # N x lam
+    def _generate_population(self, generation: int) -> NDArray[np.float64]:
+        # Get decay factors for current generation
+        window_size = min(generation, self.config.window)
+        decay = self.decay_table[self.config.window - 1 :: -1][:window_size]
+        decay = self._shift_array(decay, generation - 1)
 
-        outer_sum = rank_mu + rank_1
+        decay_rep = np.repeat(decay, self.config.mu)[: generation * self.config.mu]
 
-        # Tail contribution
-        if t <= window:
-            last_decay = decay_table[t - 1]  # t in [1..window]
+        w = np.tile(np.sqrt(self.config.weights), window_size)[: len(decay_rep)]
+
+        r_mu = np.random.randn(len(decay_rep), self.config.population_size)
+
+        relevant_d_size = min(generation * self.config.mu, self.d_history.shape[1])
+        d_relevant = self.d_history[:, :relevant_d_size]
+
+        weighted_d = d_relevant * (decay_rep[:relevant_d_size] * w[:relevant_d_size])
+        rank_mu = np.sqrt(self.config.c_mu) * (weighted_d @ r_mu[:relevant_d_size, :])
+
+        r_1 = np.random.randn(window_size, self.config.population_size)
+        p_relevant = self.p_history[:, :window_size]
+        rank_1 = np.sqrt(self.config.c_1) * (
+            p_relevant @ (r_1 * decay[:window_size, np.newaxis])
+        )
+
+        if generation <= self.config.window:
+            last_decay = self.decay_table[generation - 1]
         else:
             last_decay = np.sqrt(
-                (1.0 - ccov) ** (t - 1)
-                + (1.0 - ccov) ** window * (1.0 - ccov) ** (t - window - 1)
+                (1 - self.config.c_cov) ** (generation - 1)
+                + ((1 - self.config.c_cov) ** self.config.window)
+                * (1 - self.config.c_cov) ** (generation - self.config.window - 1)
             )
 
-        r_last = np.random.randn(N, lam)
+        r_last = np.random.randn(self.config.dimensions, self.config.population_size)
         last_term = last_decay * r_last
 
-        d = outer_sum + last_term  # N x lam
-        arx = xmean[:, None] + sigma * d  # N x lam
+        # Combine all terms to get difference vectors
+        d = rank_mu + rank_1 + last_term
 
-        return arx, d
+        return d
 
-    def optimize(self) -> OptimizationResult:
-        cfg = self.config
-        st = self._init_strategy()
-        N, lam, mu = st["N"], st["lambda"], st["mu"]
-        weights = st["weights"]
-        mueff, cc, cs, damps = st["mueff"], st["cc"], st["cs"], st["damps"]
+    def optimize(self) -> OptimizationResult["MFCMAESLogData"]:
+        """Run the MF-CMA-ES optimization algorithm."""
 
-        xmean = self.initial_point.astype(float).copy()
-        sigma = float(cfg.sigma)
-
-        # Archives
-        window = st["window"]
-        d_history = np.zeros((N, window * mu))
-        p_history = np.zeros((N, window))
-        pc = np.zeros(N)
-
-        iteration = 0
+        self.evaluations = 0
         best_fitness = float("inf")
-        best_solution = xmean.copy()
-        cviol_total = 0
+        best_solution = self.initial_point.copy()
+        worst_fitness = float("inf")
+        message = None
+        generation = 0
 
-        # For PPMF
-        prev_midpoint_fitness = float("inf")
-        midpoint_fitness = float("inf")
+        self.midpoint_fitness = np.inf
+        self.prev_midpoint_fitness = np.inf
 
-        # Convenience index helpers
-        def p_index(t: int) -> int:
-            return (t - 1) % window
+        initial_d = np.random.randn(self.config.dimensions, self.config.population_size)
+        initial_arx = self.mean[:, np.newaxis] + self.sigma * initial_d
+        initial_vx = np.clip(
+            initial_arx,
+            self.boundary_handler.lower_bounds[:, np.newaxis],
+            self.boundary_handler.upper_bounds[:, np.newaxis],
+        )
 
-        def d_range(t: int) -> slice:
-            start = p_index(t) * mu
-            end = start + mu
-            return slice(start, end)
+        initial_fitness = np.array(
+            [self.func(initial_vx[:, i]) for i in range(initial_vx.shape[1])]
+        )
+        self.evaluations += self.config.population_size
 
-        # Main loop
-        while self.evaluations < cfg.budget and iteration < cfg.max_iterations:
-            iteration += 1
-            # Sample population (matrix-free)
-            arx, d = self._generate_population(
-                xmean, sigma, st, d_history, p_history, iteration
-            )
-            # Convert to (lambda, N) for evaluation and boundary handling
-            population = arx.T  # lam x N
+        arindex = np.argsort(initial_fitness)
+        aripop = arindex[: self.config.mu]
+        initial_seld = initial_d[:, aripop]
 
-            # Repair to bounds and evaluate with penalty (non-Lamarckian, like the R code)
-            repaired = np.zeros_like(population)
-            fitness = np.zeros(lam)
-            pen = np.ones(lam)
-            cviol_iter = 0
+        d_start, d_end = self._d_range(1)
+        self.d_history[:, d_start:d_end] = initial_seld
 
-            budget_left = cfg.budget - self.evaluations
-            eval_count = min(lam, budget_left)
+        dmean = initial_seld @ self.config.weights
+        self.mean = self.mean + dmean
+        self.pc = (
+            np.sqrt(self.config.cc * (2 - self.config.cc) * self.config.mu_eff) * dmean
+        )
 
-            for i in range(lam):
-                x = population[i]
-                xr = self.boundary_handler.repair(x)
-                repaired[i] = xr
-                if not np.array_equal(x, xr):
-                    cviol_iter += 1
-                    # penalty 1 + squared distance
-                    pen[i] = 1.0 + np.sum((x - xr) ** 2)
-                else:
-                    pen[i] = 1.0
+        p_idx = self._p_index(1)
+        self.p_history[:, p_idx] = self.pc
 
-                if i < eval_count:
-                    fitness[i] = self.func(xr)
-                    self.evaluations += 1
-                else:
-                    fitness[i] = float("inf")
+        best_idx = np.argmin(initial_fitness)
+        if initial_fitness[best_idx] < best_fitness:
+            best_fitness = initial_fitness[best_idx]
+            best_solution = initial_vx[:, best_idx].copy()
 
-            cviol_total += cviol_iter
-            arfitness = fitness * pen
+        self._update_sigma_ppmf_first(initial_vx, initial_fitness)
 
-            # Track best among feasible (pen == 1)
-            feasible = pen <= 1.0
-            if np.any(feasible):
-                idx = np.argmin(fitness[feasible])
-                fit_candidate = fitness[feasible][idx]
-                # best feasible original point equals repaired (no change), pick original in-bounds
-                idx_global = np.flatnonzero(feasible)[idx]
-                if fit_candidate < best_fitness:
-                    best_fitness = float(fit_candidate)
-                    best_solution = population[idx_global].copy()
+        generation = 1
+        while self.evaluations < self.config.budget:
+            generation += 1
 
-            # Selection
-            order = np.argsort(arfitness)
-            parents = order[:mu]
+            d = self._generate_population(generation)
+            arx = self.mean[:, np.newaxis] + self.sigma * d
 
-            selx = arx[:, parents]  # N x mu
-            xmean = (selx @ weights).astype(float)  # N
-
-            seld = d[:, parents]  # N x mu
-            dmean = (seld @ weights).astype(float)  # N
-
-            # Cumulation path
-            pc = (1.0 - cc) * pc + np.sqrt(cc * (2.0 - cc) * mueff) * dmean
-
-            # Update archives
-            d_history[:, d_range(iteration)] = d[:, parents]
-            p_history[:, p_index(iteration)] = pc
-
-            # PPMF step-size update (uses repaired mid-point)
-            prev_midpoint_fitness = midpoint_fitness
-            mean_point = (
-                np.mean(repaired[:eval_count], axis=0)
-                if eval_count > 0
-                else xmean.copy()
-            )
-            # Evaluate midpoint if budget allows
-            if self.evaluations < cfg.budget:
-                midpoint_fitness = self.func(mean_point)
-                self.evaluations += 1
-            else:
-                midpoint_fitness = prev_midpoint_fitness
-
-            if np.isfinite(prev_midpoint_fitness):
-                p_succ = float(np.sum(arfitness < prev_midpoint_fitness)) / float(lam)
-            else:
-                p_succ = 0.0  # first iteration fallback
-
-            sigma *= np.exp(
-                cfg.damps_ppmf
-                * (p_succ - cfg.p_target_ppmf)
-                / max(1e-12, (1.0 - cfg.p_target_ppmf))
+            vx = np.clip(
+                arx,
+                self.boundary_handler.lower_bounds[:, np.newaxis],
+                self.boundary_handler.upper_bounds[:, np.newaxis],
             )
 
-            # Optional empirical eigen logging
-            eigenvalues = None
-            if self.config.diag_eigen:
-                # Empirical covariance of generated population (columns are samples)
-                cov = np.cov(arx)  # rows are variables by default for N x lam
-                try:
-                    ev = np.linalg.eigvalsh(cov)
-                    eigenvalues = np.sort(ev)[::-1]
-                except np.linalg.LinAlgError:
-                    eigenvalues = None
+            self.constraint_violations = int(np.sum(np.any(vx != arx, axis=0)))
 
-            # Compute stats for logging
-            finite_fit = arfitness[np.isfinite(arfitness)]
-            if finite_fit.size > 0:
-                best_fit_iter = float(np.min(finite_fit))
-                worst_fit_iter = float(np.max(finite_fit))
-                mean_fit_iter = float(np.mean(finite_fit))
-            else:
-                best_fit_iter = best_fitness
-                worst_fit_iter = best_fitness
-                mean_fit_iter = best_fitness
+            fitness_values = np.array([self.func(vx[:, i]) for i in range(vx.shape[1])])
+            self.evaluations += self.config.population_size
 
-            # Flatland escape hack (matches your R condition)
-            if cfg.flatland_escape and finite_fit.size > 0:
-                half = max(1, int(np.floor(lam / 2)))
-                qtr = max(1, int(np.ceil(lam / 4)))
-                compare_idx = min(1 + half, 2 + qtr) - 1  # zero-based
-                if (
-                    compare_idx < len(order)
-                    and arfitness[order[0]] == arfitness[order[compare_idx]]
-                ):
-                    sigma *= np.exp(0.2 + cs / damps)
-                    if cfg.trace:
-                        print("Flat fitness function. Increasing sigma.")
+            best_idx = np.argmin(fitness_values)
+            if fitness_values[best_idx] < best_fitness:
+                best_fitness = fitness_values[best_idx]
+                best_solution = vx[:, best_idx].copy()
 
-            # Log this iteration
+            worst_fitness = max(worst_fitness, float(np.max(fitness_values)))
+
+            arindex = np.argsort(fitness_values)
+            aripop = arindex[: self.config.mu]
+            seld = d[:, aripop]
+
+            dmean = seld @ self.config.weights
+            self.mean = self.mean + dmean
+
+            self.pc = (1 - self.config.cc) * self.pc + np.sqrt(
+                self.config.cc * (2 - self.config.cc) * self.config.mu_eff
+            ) * dmean
+
+            d_start, d_end = self._d_range(generation)
+            self.d_history[:, d_start:d_end] = seld
+
+            p_idx = self._p_index(generation)
+            self.p_history[:, p_idx] = self.pc
+
+            self._update_sigma_ppmf(vx, fitness_values)
+
             self.logger.log_iteration(
-                iteration=iteration,
+                iteration=generation,
                 evaluations=self.evaluations,
-                best_fitness=best_fit_iter,
-                worst_fitness=worst_fit_iter,
-                mean_fitness=mean_fit_iter,
-                sigma=sigma,
-                p_succ=p_succ,
-                midpoint_fitness=float(midpoint_fitness),
-                constraint_violations=int(cviol_iter),
-                fitness=arfitness,
-                population=repaired if self.config.diag_pop else None,
+                best_fitness=best_fitness,
+                worst_fitness=worst_fitness,
+                mean_fitness=float(np.mean(fitness_values)),
+                sigma=self.sigma,
+                p_succ=self.p_succ,
+                midpoint_fitness=self.midpoint_fitness,
+                constraint_violations=self.constraint_violations,
+                fitness=fitness_values,
+                population=vx if self.config.diag_pop else None,
                 best_solution=best_solution,
-                eigenvalues=eigenvalues,
+                pc=self.pc,
+                mean_vector=self.mean,
             )
 
-            # Termination by target fitness (on evaluated individuals)
-            if best_fit_iter <= cfg.stop_fitness:
-                msg = "Stop fitness reached."
-                return OptimizationResult(
-                    best_solution=best_solution,
-                    best_fitness=float(best_fitness),
-                    evaluations=self.evaluations,
-                    message=msg,
-                    diagnostic=self.get_logs(),
-                    algorithm=AlgorithmChoice.MFCMAES,
-                )
+            if fitness_values[0] <= self.config.tolfun:
+                message = "Target fitness reached."
+                break
 
-        msg = "Exceeded maximal iterations or budget."
-        return OptimizationResult(
+            if self.evaluations >= self.config.budget:
+                message = "Maximum function evaluations reached."
+                break
+
+            if self.sigma > self.config.tolxup:
+                message = f"Step size diverged (too large): sigma={self.sigma:.2e}"
+                break
+
+            if self.sigma < self.config.tolx:
+                message = f"Step size too small: sigma={self.sigma:.2e}"
+                break
+
+        if message is None:
+            message = "Maximum function evaluations reached."
+
+        result: OptimizationResult["MFCMAESLogData"] = OptimizationResult(
             best_solution=best_solution,
-            best_fitness=float(best_fitness),
+            best_fitness=best_fitness,
             evaluations=self.evaluations,
-            message=msg,
+            message=message,
             diagnostic=self.get_logs(),
             algorithm=AlgorithmChoice.MFCMAES,
+        )
+
+        return result
+
+    def _update_sigma_ppmf_first(
+        self, vx: NDArray[np.float64], fitness_values: NDArray[np.float64]
+    ) -> None:
+        """
+        First call to PPMF - just initialize midpoint_fitness.
+        Don't update sigma yet.
+        """
+        if not self.config.use_ppmf:
+            self.midpoint_fitness = np.inf
+            self.prev_midpoint_fitness = np.inf
+            self.p_succ = 0.0
+            return
+
+        self.prev_midpoint_fitness = self.midpoint_fitness
+
+        population_midpoint = np.mean(vx, axis=1)
+        self.midpoint_fitness = self.func(population_midpoint)
+        self.evaluations += 1
+
+        num_successes = np.sum(fitness_values < self.prev_midpoint_fitness)
+        self.p_succ = num_successes / self.config.population_size
+
+    def _update_sigma_ppmf(
+        self, vx: NDArray[np.float64], fitness_values: NDArray[np.float64]
+    ) -> None:
+        """
+        Update step size using PPMF rule.
+        This matches the R code exactly.
+        If use_ppmf is False, sigma remains constant.
+        """
+        if not self.config.use_ppmf:
+            # Keep sigma constant, just calculate p_succ for logging
+            population_midpoint = np.mean(vx, axis=1)
+            self.midpoint_fitness = self.func(population_midpoint)
+            self.evaluations += 1
+
+            num_successes = np.sum(fitness_values < self.prev_midpoint_fitness)
+            self.p_succ = num_successes / self.config.population_size
+
+            self.prev_midpoint_fitness = self.midpoint_fitness
+            return
+
+        self.prev_midpoint_fitness = self.midpoint_fitness
+
+        population_midpoint = np.mean(vx, axis=1)
+
+        self.midpoint_fitness = self.func(population_midpoint)
+        self.evaluations += 1
+
+        num_successes = np.sum(fitness_values < self.prev_midpoint_fitness)
+        self.p_succ = num_successes / self.config.population_size
+
+        self.sigma = self.sigma * np.exp(
+            (1.0 / self.config.damps_ppmf)
+            * (self.p_succ - self.config.p_target_ppmf)
+            / (1.0 - self.config.p_target_ppmf)
         )

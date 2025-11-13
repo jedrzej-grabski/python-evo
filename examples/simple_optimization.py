@@ -1,3 +1,4 @@
+from typing import cast
 import matplotlib.pyplot as plt
 from pathlib import Path
 
@@ -6,6 +7,7 @@ from src import AlgorithmFactory
 from src.algorithms.choices import AlgorithmChoice
 from src.algorithms.cmaes.config import CMAESConfig
 from src.algorithms.des.config import DESConfig
+from src.algorithms.mfcmaes.mfcmaes_config import MFCMAESConfig
 from src.utils.boundary_handlers import BoundaryHandlerType
 from src.utils.benchmark_functions import CEC17Function, Sphere
 from src.utils.initial_point_generator import (
@@ -25,13 +27,13 @@ plt.switch_backend("Agg")
 def run_optimization_example(algorithm: AlgorithmChoice):
     """Run a simple optimization example using the new architecture."""
 
-    dimensions = 20
+    dimensions = 100
 
     opt_func = CEC17Function(dimensions=dimensions, function_id=1)
     # opt_func = Sphere(dimensions=dimensions)
 
-    lower_bounds = -100.12
-    upper_bounds = 100.12
+    lower_bounds = -50.12
+    upper_bounds = 50.12
 
     initial_point_generator = InitialPointGenerator(
         strategy=InitialPointGeneratorType.UNIFORM,
@@ -44,12 +46,18 @@ def run_optimization_example(algorithm: AlgorithmChoice):
 
     config = AlgorithmFactory.create_config(algorithm, dimensions=dimensions)
 
+    config = cast(MFCMAESConfig, config)
+
+    # Disable PPMF to test with constant sigma
+    config.use_ppmf = True
+
     config.enable_all_diagnostics()
 
     print(f"Starting {algorithm.value} optimization...")
     print(f"Dimensions: {dimensions}")
     print(f"Budget: {config.budget}")
     print(f"Population size: {config.population_size}")
+    print(f"PPMF enabled: {config.use_ppmf}")
     print(f"Initial point value: {opt_func(initial_point):.20f}")
     print(f"Configuration: {config}")
 
@@ -70,11 +78,6 @@ def run_optimization_example(algorithm: AlgorithmChoice):
     print(f"Function evaluations: {result.evaluations}")
     print(f"Message: {result.message}")
     print(f"Algorithm: {result.algorithm}")
-
-    if hasattr(result.diagnostic, "Ft"):
-        des_logs = result.diagnostic
-        if des_logs.Ft:
-            print(f"Final Ft value: {des_logs.Ft[-1]}")
 
     output_dir = Path("plots")
     output_dir.mkdir(exist_ok=True)
@@ -98,16 +101,13 @@ def run_optimization_example(algorithm: AlgorithmChoice):
     )
     print(f"Saved convergence plot to: {convergence_path}")
 
-    ft_path = output_dir / "ft_evolution.png"
-    _ = plotter.plot_parameter_evolution(
-        results_dict,
-        "Ft",
-        save_path=ft_path,
-        title=f"{algorithm.value} Ft Parameter Evolution",
-    )
+    # if hasattr(result.diagnostic, "Ft"):
+    #     des_logs = result.diagnostic
+    #     if des_logs.Ft:
+    #         print(f"Final Ft value: {des_logs.Ft[-1]}")
 
-    print(f"\nAll plots saved successfully to: {output_dir.absolute()}")
+    # print(f"\nAll plots saved successfully to: {output_dir.absolute()}")
 
 
 if __name__ == "__main__":
-    run_optimization_example(AlgorithmChoice.CMAES)
+    run_optimization_example(AlgorithmChoice.MFCMAES)
