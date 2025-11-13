@@ -98,7 +98,7 @@ class DESOptimizer(BaseOptimizer[DESLogData, DESConfig]):
         )
 
         old_mean = np.zeros(N)
-        new_mean = self.initial_point.copy()
+        new_mean = cumulative_mean.copy()
         worst_fitness = np.max(fitness)
 
         # Store population and selection means
