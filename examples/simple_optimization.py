@@ -27,10 +27,9 @@ plt.switch_backend("Agg")
 def run_optimization_example(algorithm: AlgorithmChoice):
     """Run a simple optimization example using the new architecture."""
 
-    dimensions = 100
-
-    opt_func = CEC17Function(dimensions=dimensions, function_id=1)
-    # opt_func = Sphere(dimensions=dimensions)
+    dimensions = 10
+    # opt_func = CEC17Function(dimensions=dimensions, function_id=1)
+    opt_func = Sphere(dimensions=dimensions)
 
     lower_bounds = -50.12
     upper_bounds = 50.12
@@ -92,22 +91,6 @@ def run_optimization_example(algorithm: AlgorithmChoice):
 
     print(f"Saved {algorithm.value} metrics plot to: {metrics_path}")
 
-    results_dict = {algorithm: result}
-    convergence_path = output_dir / "convergence_comparison.png"
-    _ = plotter.plot_convergence_comparison(
-        results_dict,
-        save_path=convergence_path,
-        title=f"{algorithm.value} Convergence on Sphere Function",
-    )
-    print(f"Saved convergence plot to: {convergence_path}")
-
-    # if hasattr(result.diagnostic, "Ft"):
-    #     des_logs = result.diagnostic
-    #     if des_logs.Ft:
-    #         print(f"Final Ft value: {des_logs.Ft[-1]}")
-
-    # print(f"\nAll plots saved successfully to: {output_dir.absolute()}")
-
 
 if __name__ == "__main__":
-    run_optimization_example(AlgorithmChoice.MFCMAES)
+    run_optimization_example(AlgorithmChoice.DES)

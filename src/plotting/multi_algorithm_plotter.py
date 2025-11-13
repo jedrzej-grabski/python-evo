@@ -47,7 +47,7 @@ class MultiAlgorithmPlotter:
             save_path: Path to save the plot
             title: Plot title
             log_scale: Whether to use log scale for y-axis
-            show_evaluations: Whether to show x-axis as evaluations or iterations
+            show_evaluations: Whether to show x-axis as evaluations (True) or iterations (False)
 
         Returns:
             Figure object
@@ -58,11 +58,13 @@ class MultiAlgorithmPlotter:
             log_data = result.diagnostic
 
             if hasattr(log_data, "best_fitness") and log_data.best_fitness:
-                x_data = (
-                    log_data.evaluations
-                    if show_evaluations and hasattr(log_data, "evaluations")
-                    else range(len(log_data.best_fitness))
-                )
+                # Always prefer evaluations if available
+                if hasattr(log_data, "evaluations") and log_data.evaluations:
+                    x_data = log_data.evaluations
+                    x_label = "Function Evaluations"
+                else:
+                    x_data = range(len(log_data.best_fitness))
+                    x_label = "Iterations"
 
                 ax.plot(
                     x_data,
@@ -72,7 +74,7 @@ class MultiAlgorithmPlotter:
                     alpha=0.8,
                 )
 
-        ax.set_xlabel("Function Evaluations" if show_evaluations else "Iterations")
+        ax.set_xlabel(x_label if not show_evaluations else "Function Evaluations")
         ax.set_ylabel("Best Fitness")
         ax.set_title(title)
         ax.legend(fontsize="x-large")
@@ -124,11 +126,10 @@ class MultiAlgorithmPlotter:
         # Create 4 main panels
         gs = fig.add_gridspec(4, 2, hspace=0.3, wspace=0.3)
 
-        # Use evaluations for x-axis
         evals = (
             log_data.evaluations
             if log_data.evaluations
-            else range(len(log_data.best_fitness))
+            else range(len(log_data.best_fitness) if log_data.best_fitness else 0)
         )
 
         # ============ PANEL 1: Objective Statistics ============
@@ -246,11 +247,10 @@ class MultiAlgorithmPlotter:
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
         axes = axes.flatten()
 
-        # Use evaluations for x-axis
         evals = (
             log_data.evaluations
             if log_data.evaluations
-            else range(len(log_data.best_fitness))
+            else range(len(log_data.best_fitness) if log_data.best_fitness else 0)
         )
 
         # Plot 1: Convergence
@@ -329,11 +329,10 @@ class MultiAlgorithmPlotter:
 
         gs = fig.add_gridspec(4, 2, hspace=0.3, wspace=0.3)
 
-        # Use evaluations for x-axis
         evals = (
             log_data.evaluations
             if log_data.evaluations
-            else range(len(log_data.best_fitness))
+            else range(len(log_data.best_fitness) if log_data.best_fitness else 0)
         )
 
         # ============ PANEL 1: Objective Statistics ============
@@ -456,15 +455,15 @@ class MultiAlgorithmPlotter:
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
         axes = axes.flatten()
 
-        # Use evaluations for x-axis
+        has_fitness = hasattr(log_data, "best_fitness") and log_data.best_fitness
         evals = (
             log_data.evaluations
             if hasattr(log_data, "evaluations") and log_data.evaluations
-            else range(len(log_data.best_fitness))
+            else range(len(log_data.best_fitness) if has_fitness else 0)
         )
 
         # Plot 1: Convergence
-        if hasattr(log_data, "best_fitness") and log_data.best_fitness:
+        if has_fitness:
             axes[0].semilogy(evals, log_data.best_fitness, "b-", linewidth=2)
             axes[0].set_title("Best Fitness Evolution")
             axes[0].set_xlabel("Function Evaluations")
@@ -472,7 +471,7 @@ class MultiAlgorithmPlotter:
             axes[0].grid(True, alpha=0.3)
 
         # Plot 2: Fitness statistics
-        if hasattr(log_data, "best_fitness") and log_data.best_fitness:
+        if has_fitness:
             if hasattr(log_data, "mean_fitness") and log_data.mean_fitness:
                 axes[1].plot(
                     evals, log_data.mean_fitness, "g-", linewidth=2, label="Mean"
@@ -570,7 +569,6 @@ class MultiAlgorithmPlotter:
             if hasattr(log_data, parameter_name):
                 param_data = getattr(log_data, parameter_name)
                 if isinstance(param_data, list) and len(param_data) > 0:
-                    # Use evaluations for x-axis
                     evals = (
                         log_data.evaluations
                         if hasattr(log_data, "evaluations") and log_data.evaluations
