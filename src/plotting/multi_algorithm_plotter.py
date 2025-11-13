@@ -10,6 +10,8 @@ from src.algorithms.choices import AlgorithmChoice
 from src.logging.base_logger import BaseLogData
 from src.core.base_optimizer import OptimizationResult
 from src.logging.des_logger import DESLogData
+from src.logging.mfcmaes_logger import MFCMAESLogData
+from src.logging.cmaes_logger import CMAESLogData
 
 
 class MultiAlgorithmPlotter:
@@ -106,8 +108,11 @@ class MultiAlgorithmPlotter:
 
         if algorithm == AlgorithmChoice.DES:
             return self._plot_des_metrics(log_data, save_path)
-        else:
+        if algorithm == AlgorithmChoice.MFCMAES:
+            return self._plot_mfcmaes_metrics(log_data, save_path)
+        if algorithm == AlgorithmChoice.CMAES:
             return self._plot_generic_metrics(log_data, algorithm, save_path)
+        return self._plot_generic_metrics(log_data, algorithm, save_path)
 
     def _plot_des_metrics(
         self, log_data: DESLogData, save_path: Optional[Union[str, Path]] = None
@@ -173,6 +178,98 @@ class MultiAlgorithmPlotter:
             axes[3].grid(True, alpha=0.3)
 
         plt.suptitle("DES Algorithm Metrics", fontsize=16)
+        plt.tight_layout()
+
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+
+        return fig
+
+    def _plot_mfcmaes_metrics(
+        self, log_data: MFCMAESLogData, save_path: Optional[Union[str, Path]] = None
+    ) -> Figure:
+        """Plot MF-CMA-ES specific metrics."""
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        axes = axes.flatten()
+
+        iters = range(len(log_data.best_fitness))
+
+        # Plot 1: Convergence
+        if log_data.best_fitness:
+            axes[0].semilogy(log_data.best_fitness, "b-", linewidth=2, label="Best")
+            if log_data.mean_fitness:
+                axes[0].semilogy(
+                    log_data.mean_fitness, "r--", linewidth=1.7, alpha=0.8, label="Mean"
+                )
+            axes[0].set_title("Convergence (Best / Mean)")
+            axes[0].set_xlabel("Iterations")
+            axes[0].set_ylabel("Fitness")
+            axes[0].grid(True, alpha=0.3)
+            axes[0].legend()
+
+        # Plot 2: Step-size (sigma) evolution
+        if hasattr(log_data, "sigma") and log_data.sigma:
+            axes[1].plot(log_data.sigma, "g-", linewidth=2)
+            axes[1].set_title("Step Size (sigma) Evolution")
+            axes[1].set_xlabel("Iterations")
+            axes[1].set_ylabel("Sigma")
+            axes[1].grid(True, alpha=0.3)
+
+        # Plot 3: Success probability p_succ
+        if hasattr(log_data, "p_succ") and log_data.p_succ:
+            axes[2].plot(log_data.p_succ, "m-", linewidth=2, label="p_succ")
+            # Target reference (commonly 0.2)
+            target = 0.2
+            axes[2].axhline(
+                target, color="k", linestyle="--", linewidth=1, label="Target"
+            )
+            axes[2].set_ylim(0, 1)
+            axes[2].set_title("Success Probability (p_succ)")
+            axes[2].set_xlabel("Iterations")
+            axes[2].set_ylabel("p_succ")
+            axes[2].grid(True, alpha=0.3)
+            axes[2].legend()
+
+        # Plot 4: Midpoint fitness and constraint violations
+        has_mid = hasattr(log_data, "midpoint_fitness") and log_data.midpoint_fitness
+        has_cv = (
+            hasattr(log_data, "constraint_violations")
+            and log_data.constraint_violations
+        )
+        if has_mid or has_cv:
+            ax4 = axes[3]
+            if has_mid:
+                ax4.semilogy(
+                    log_data.midpoint_fitness,
+                    "c-",
+                    linewidth=2,
+                    label="Midpoint Fitness",
+                )
+                ax4.set_ylabel("Midpoint Fitness (log)")
+            ax4.set_xlabel("Iterations")
+            ax4.set_title("Midpoint Fitness / Constraint Violations")
+            ax4.grid(True, alpha=0.3)
+
+            if has_cv:
+                ax4b = ax4.twinx()
+                ax4b.plot(
+                    log_data.constraint_violations,
+                    "y--",
+                    linewidth=1.5,
+                    label="Constraint Violations",
+                )
+                ax4b.set_ylabel("Constraint Violations")
+
+                # Combined legend
+                lines = []
+                labels = []
+                for ax_ in (ax4, ax4b):
+                    h, l = ax_.get_legend_handles_labels()
+                    lines.extend(h)
+                    labels.extend(l)
+                ax4.legend(lines, labels, loc="upper right")
+
+        plt.suptitle("MF-CMA-ES Algorithm Metrics", fontsize=16)
         plt.tight_layout()
 
         if save_path:

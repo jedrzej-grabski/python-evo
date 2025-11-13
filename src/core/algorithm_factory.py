@@ -1,4 +1,5 @@
 from typing import Callable, Type, Union, overload, Literal
+from typing import TYPE_CHECKING
 import numpy as np
 from numpy.typing import NDArray
 
@@ -10,6 +11,13 @@ from src.utils.boundary_handlers import BoundaryHandler, BoundaryHandlerType
 
 from src.algorithms.des.des_optimizer import DESOptimizer
 from src.algorithms.des.config import DESConfig
+
+if TYPE_CHECKING:
+    # Only for type checkers; avoids runtime imports/cycles
+    from src.algorithms.mfcmaes.mfcmaes_optimizer import MFCMAESOptimizer
+    from src.algorithms.mfcmaes.mfcmaes_config import MFCMAESConfig
+    from src.algorithms.cmaes.cmaes_optimizer import CMAESOptimizer
+    from src.algorithms.cmaes.cmaes_config import CMAESConfig
 
 
 class AlgorithmFactory:
@@ -59,6 +67,37 @@ class AlgorithmFactory:
         upper_bounds: Union[float, NDArray[np.float64], list[float]] = 100.0,
         **kwargs,
     ) -> BaseOptimizer: ...
+
+    # Optional typed overload for MFCMAES
+    @overload
+    @classmethod
+    def create_optimizer(
+        cls,
+        algorithm: Literal[AlgorithmChoice.MFCMAES],
+        func: Callable[[NDArray[np.float64]], float],
+        initial_point: NDArray[np.float64],
+        config: "MFCMAESConfig" | None = None,
+        boundary_handler: BoundaryHandler | None = None,
+        boundary_strategy: BoundaryHandlerType | None = None,
+        lower_bounds: Union[float, NDArray[np.float64], list[float]] = -100.0,
+        upper_bounds: Union[float, NDArray[np.float64], list[float]] = 100.0,
+        **kwargs,
+    ) -> "MFCMAESOptimizer": ...
+
+    @overload
+    @classmethod
+    def create_optimizer(
+        cls,
+        algorithm: Literal[AlgorithmChoice.CMAES],
+        func: Callable[[NDArray[np.float64]], float],
+        initial_point: NDArray[np.float64],
+        config: CMAESConfig | None = None,
+        boundary_handler: BoundaryHandler | None = None,
+        boundary_strategy: BoundaryHandlerType | None = None,
+        lower_bounds: Union[float, NDArray[np.float64], list[float]] = -100.0,
+        upper_bounds: Union[float, NDArray[np.float64], list[float]] = 100.0,
+        **kwargs,
+    ) -> "CMAESOptimizer": ...
 
     @classmethod
     def create_optimizer(

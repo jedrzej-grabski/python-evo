@@ -21,12 +21,27 @@ def _register_algorithms():
     except ImportError:
         pass  # Algorithm not available
 
-    # try:
-    #     from src.mfcmaes.mfcmaes_optimizer import MFCMAESOptimizer
-    #     from src.mfcmaes.config import MFCMAESConfig
-    #     AlgorithmFactory.register_algorithm("MFCMAES", MFCMAESOptimizer, MFCMAESConfig)
-    # except ImportError:
-    #     pass
+    # Register Matrix-Free CMA-ES
+    try:
+        from src.algorithms.mfcmaes.mfcmaes_optimizer import MFCMAESOptimizer
+        from src.algorithms.mfcmaes.mfcmaes_config import MFCMAESConfig
+
+        AlgorithmFactory.register_algorithm(
+            AlgorithmChoice.MFCMAES, MFCMAESOptimizer, MFCMAESConfig
+        )
+    except ImportError:
+        pass  # Algorithm not available
+
+    # Register Classic CMA-ES
+    try:
+        from src.algorithms.cmaes.cmaes_optimizer import CMAESOptimizer
+        from src.algorithms.cmaes.cmaes_config import CMAESConfig
+
+        AlgorithmFactory.register_algorithm(
+            AlgorithmChoice.CMAES, CMAESOptimizer, CMAESConfig
+        )
+    except ImportError:
+        pass  # Algorithm not available
 
 
 _register_algorithms()

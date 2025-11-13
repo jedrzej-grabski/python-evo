@@ -2,7 +2,7 @@ from enum import Enum
 
 
 class AlgorithmChoice(Enum):
+    Unknown = "Unknown"
     DES = "DES"
     MFCMAES = "MFCMAES"
-
-    Unknown = "Unknown"
+    CMAES = "CMAES"

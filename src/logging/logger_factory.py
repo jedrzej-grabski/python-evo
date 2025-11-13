@@ -2,6 +2,8 @@ from typing import Type
 from src.algorithms.choices import AlgorithmChoice
 from src.logging.base_logger import BaseLogger
 from src.logging.des_logger import DESLogger
+from src.logging.mfcmaes_logger import MFCMAESLogger
+from src.logging.cmaes_logger import CMAESLogger
 
 
 class LoggerFactory:
@@ -26,3 +28,5 @@ class LoggerFactory:
 
 
 LoggerFactory.register_logger(AlgorithmChoice.DES, DESLogger)
+LoggerFactory.register_logger(AlgorithmChoice.MFCMAES, MFCMAESLogger)
+LoggerFactory.register_logger(AlgorithmChoice.CMAES, CMAESLogger)
