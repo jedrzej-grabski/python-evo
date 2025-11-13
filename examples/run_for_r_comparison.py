@@ -23,7 +23,7 @@ def run_python_des_cec2017():
 
     np.random.seed(42)
 
-    function_id = 10
+    function_id = 10  # Changed from 1 to 10
     dimensions = 10
     runs = 10
     budget = 10000 * dimensions
@@ -40,17 +40,14 @@ def run_python_des_cec2017():
     for run in range(runs):
         print(f"Run {run+1}/{runs}")
 
+        # Reset seed for each run to match R behavior
+        np.random.seed(42 + run)
+
         opt_func = CEC17Function(dimensions=dimensions, function_id=function_id)
 
-        initial_point_generator = InitialPointGenerator(
-            strategy=InitialPointGeneratorType.CUSTOM,
-            dimensions=dimensions,
-            lower_bounds=-100,
-            upper_bounds=100,
-            initial_point=np.full(dimensions, 50.0),
-        )
+        # Use rep(50, dimensions) to match R's initial point
+        initial_point = np.full(dimensions, 50.0)
 
-        initial_point = initial_point_generator.generate()
         config = DESConfig(dimensions=dimensions)
         config.budget = budget
         config.population_size = 4 * dimensions

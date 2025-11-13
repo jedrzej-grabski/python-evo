@@ -29,8 +29,8 @@ def run_optimization_example():
     # opt_func = CEC17Function(dimensions=dimensions, function_id=3)
     opt_func = Sphere(dimensions=dimensions)
 
-    lower_bounds = -5.12
-    upper_bounds = 5.12
+    lower_bounds = -100.12
+    upper_bounds = 100.12
 
     initial_point_generator = InitialPointGenerator(
         strategy=InitialPointGeneratorType.UNIFORM,
