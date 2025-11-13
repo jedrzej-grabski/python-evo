@@ -3,6 +3,8 @@ from typing import Any, Protocol
 import numpy as np
 from numpy.typing import NDArray
 
+from src.algorithms.choices import AlgorithmChoice
+
 
 class ConfigProtocol(Protocol):
     """Protocol defining the interface for algorithm configurations."""
@@ -25,10 +27,10 @@ class BaseConfig:
     dimensions: int
     """Number of dimensions in the problem"""
 
-    budget: int = field(init=False)
+    budget: int = field(default=0)
     """Maximum number of function evaluations"""
 
-    population_size: int = field(init=False)
+    population_size: int = field(default=0)
     """Size of the population"""
 
     # Diagnostic logging options (common across algorithms)

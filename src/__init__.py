@@ -35,7 +35,7 @@ def _register_algorithms():
     # Register Classic CMA-ES
     try:
         from src.algorithms.cmaes.cmaes_optimizer import CMAESOptimizer
-        from src.algorithms.cmaes.cmaes_config import CMAESConfig
+        from src.algorithms.cmaes.config import CMAESConfig
 
         AlgorithmFactory.register_algorithm(
             AlgorithmChoice.CMAES, CMAESOptimizer, CMAESConfig

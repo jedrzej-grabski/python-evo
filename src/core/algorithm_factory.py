@@ -11,13 +11,10 @@ from src.utils.boundary_handlers import BoundaryHandler, BoundaryHandlerType
 
 from src.algorithms.des.des_optimizer import DESOptimizer
 from src.algorithms.des.config import DESConfig
-
-if TYPE_CHECKING:
-    # Only for type checkers; avoids runtime imports/cycles
-    from src.algorithms.mfcmaes.mfcmaes_optimizer import MFCMAESOptimizer
-    from src.algorithms.mfcmaes.mfcmaes_config import MFCMAESConfig
-    from src.algorithms.cmaes.cmaes_optimizer import CMAESOptimizer
-    from src.algorithms.cmaes.cmaes_config import CMAESConfig
+from src.algorithms.mfcmaes.mfcmaes_optimizer import MFCMAESOptimizer
+from src.algorithms.mfcmaes.mfcmaes_config import MFCMAESConfig
+from src.algorithms.cmaes.cmaes_optimizer import CMAESOptimizer
+from src.algorithms.cmaes.config import CMAESConfig
 
 
 class AlgorithmFactory:
@@ -44,7 +41,7 @@ class AlgorithmFactory:
         algorithm: Literal[AlgorithmChoice.DES],
         func: Callable[[NDArray[np.float64]], float],
         initial_point: NDArray[np.float64],
-        config: DESConfig | None = None,
+        config: "DESConfig | None" = None,
         boundary_handler: BoundaryHandler | None = None,
         boundary_strategy: BoundaryHandlerType | None = None,
         lower_bounds: Union[float, NDArray[np.float64], list[float]] = -100.0,
@@ -76,7 +73,7 @@ class AlgorithmFactory:
         algorithm: Literal[AlgorithmChoice.MFCMAES],
         func: Callable[[NDArray[np.float64]], float],
         initial_point: NDArray[np.float64],
-        config: "MFCMAESConfig" | None = None,
+        config: "MFCMAESConfig | None" = None,
         boundary_handler: BoundaryHandler | None = None,
         boundary_strategy: BoundaryHandlerType | None = None,
         lower_bounds: Union[float, NDArray[np.float64], list[float]] = -100.0,
@@ -91,7 +88,7 @@ class AlgorithmFactory:
         algorithm: Literal[AlgorithmChoice.CMAES],
         func: Callable[[NDArray[np.float64]], float],
         initial_point: NDArray[np.float64],
-        config: CMAESConfig | None = None,
+        config: "CMAESConfig | None" = None,
         boundary_handler: BoundaryHandler | None = None,
         boundary_strategy: BoundaryHandlerType | None = None,
         lower_bounds: Union[float, NDArray[np.float64], list[float]] = -100.0,

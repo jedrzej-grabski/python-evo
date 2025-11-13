@@ -4,6 +4,7 @@ from pathlib import Path
 from src import AlgorithmFactory
 
 from src.algorithms.choices import AlgorithmChoice
+from src.algorithms.cmaes.config import CMAESConfig
 from src.algorithms.des.config import DESConfig
 from src.utils.boundary_handlers import BoundaryHandlerType
 from src.utils.benchmark_functions import CEC17Function, Sphere
@@ -21,16 +22,16 @@ plt.ioff()
 plt.switch_backend("Agg")
 
 
-def run_optimization_example():
+def run_optimization_example(algorithm: AlgorithmChoice):
     """Run a simple optimization example using the new architecture."""
 
-    dimensions = 10
+    dimensions = 20
 
-    # opt_func = CEC17Function(dimensions=dimensions, function_id=3)
-    opt_func = Sphere(dimensions=dimensions)
+    opt_func = CEC17Function(dimensions=dimensions, function_id=1)
+    # opt_func = Sphere(dimensions=dimensions)
 
-    lower_bounds = -5.12
-    upper_bounds = 5.12
+    lower_bounds = -100.12
+    upper_bounds = 100.12
 
     initial_point_generator = InitialPointGenerator(
         strategy=InitialPointGeneratorType.UNIFORM,
@@ -41,14 +42,11 @@ def run_optimization_example():
 
     initial_point = initial_point_generator.generate()
 
-    config = DESConfig(dimensions=dimensions)
-
-    config.budget = 10000 * dimensions
-    config.population_size = 4 * dimensions
+    config = AlgorithmFactory.create_config(algorithm, dimensions=dimensions)
 
     config.enable_all_diagnostics()
 
-    print("Starting DES optimization...")
+    print(f"Starting {algorithm.value} optimization...")
     print(f"Dimensions: {dimensions}")
     print(f"Budget: {config.budget}")
     print(f"Population size: {config.population_size}")
@@ -56,7 +54,7 @@ def run_optimization_example():
     print(f"Configuration: {config}")
 
     optimizer = AlgorithmFactory.create_optimizer(
-        algorithm=AlgorithmChoice.DES,
+        algorithm=algorithm,
         func=opt_func,
         initial_point=initial_point,
         config=config,
@@ -84,29 +82,32 @@ def run_optimization_example():
 
     plotter = MultiAlgorithmPlotter()
 
-    metrics_path = output_dir / "des_metrics.png"
+    metrics_path = output_dir / f"{algorithm.value.lower()}_metrics.png"
     _ = plotter.plot_algorithm_specific_metrics(
-        result, AlgorithmChoice.DES, save_path=metrics_path
+        result, algorithm, save_path=metrics_path
     )
 
-    print(f"Saved DES metrics plot to: {metrics_path}")
+    print(f"Saved {algorithm.value} metrics plot to: {metrics_path}")
 
-    results_dict = {AlgorithmChoice.DES: result}
+    results_dict = {algorithm: result}
     convergence_path = output_dir / "convergence_comparison.png"
     _ = plotter.plot_convergence_comparison(
         results_dict,
         save_path=convergence_path,
-        title="DES Convergence on Sphere Function",
+        title=f"{algorithm.value} Convergence on Sphere Function",
     )
     print(f"Saved convergence plot to: {convergence_path}")
 
     ft_path = output_dir / "ft_evolution.png"
     _ = plotter.plot_parameter_evolution(
-        results_dict, "Ft", save_path=ft_path, title="DES Ft Parameter Evolution"
+        results_dict,
+        "Ft",
+        save_path=ft_path,
+        title=f"{algorithm.value} Ft Parameter Evolution",
     )
 
     print(f"\nAll plots saved successfully to: {output_dir.absolute()}")
 
 
 if __name__ == "__main__":
-    run_optimization_example()
+    run_optimization_example(AlgorithmChoice.CMAES)
