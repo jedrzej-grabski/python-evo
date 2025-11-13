@@ -162,8 +162,8 @@ class CEC17Function(BenchmarkFunction):
         """
         super().__init__(dimensions)
 
-        if function_id < 1 or function_id > 28:
-            raise ValueError("Function ID must be between 1 and 28.")
+        if function_id < 1 or function_id > 30:
+            raise ValueError("Function ID must be between 1 and 29.")
 
         self.function_id = function_id
 
