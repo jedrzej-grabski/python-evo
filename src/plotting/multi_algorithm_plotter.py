@@ -116,34 +116,48 @@ class MultiAlgorithmPlotter:
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
         axes = axes.flatten()
 
+        x_data = (
+            log_data.evaluations
+            if hasattr(log_data, "evaluations") and log_data.evaluations
+            else (
+                range(len(log_data.best_fitness))
+                if hasattr(log_data, "best_fitness")
+                else []
+            )
+        )
+
         # Plot 1: Convergence
         if hasattr(log_data, "best_fitness") and log_data.best_fitness:
             axes[0].semilogy(
-                log_data.best_fitness, "b-", linewidth=2, label="Best Fitness"
+                x_data, log_data.best_fitness, "b-", linewidth=2, label="Best Fitness"
             )
             if hasattr(log_data, "mean_fitness") and log_data.mean_fitness:
                 axes[0].semilogy(
-                    log_data.mean_fitness, "r--", alpha=0.7, label="Mean Fitness"
+                    x_data,
+                    log_data.mean_fitness,
+                    "r--",
+                    alpha=0.7,
+                    label="Mean Fitness",
                 )
             axes[0].set_title("Convergence")
-            axes[0].set_xlabel("Iterations")
+            axes[0].set_xlabel("Function Evaluations")
             axes[0].set_ylabel("Fitness")
             axes[0].legend()
             axes[0].grid(True, alpha=0.3)
 
         # Plot 2: Ft evolution (DES-specific)
         if hasattr(log_data, "Ft") and log_data.Ft:
-            axes[1].plot(log_data.Ft, "g-", linewidth=2)
+            axes[1].plot(x_data, log_data.Ft, "g-", linewidth=2)
             axes[1].set_title("Ft Evolution")
-            axes[1].set_xlabel("Iterations")
+            axes[1].set_xlabel("Function Evaluations")
             axes[1].set_ylabel("Ft")
             axes[1].grid(True, alpha=0.3)
 
         # Plot 3: Condition number
         if hasattr(log_data, "condition_number") and log_data.condition_number:
-            axes[2].semilogy(log_data.condition_number, "m-", linewidth=2)
+            axes[2].semilogy(x_data, log_data.condition_number, "m-", linewidth=2)
             axes[2].set_title("Condition Number")
-            axes[2].set_xlabel("Iterations")
+            axes[2].set_xlabel("Function Evaluations")
             axes[2].set_ylabel("Condition Number")
             axes[2].grid(True, alpha=0.3)
 
@@ -155,18 +169,22 @@ class MultiAlgorithmPlotter:
             and log_data.worst_fitness
         ):
             axes[3].fill_between(
-                range(len(log_data.best_fitness)),
+                x_data,
                 log_data.best_fitness,
                 log_data.worst_fitness,
                 alpha=0.3,
                 label="Best-Worst Range",
             )
-            axes[3].plot(log_data.best_fitness, "b-", linewidth=2, label="Best")
-            axes[3].plot(log_data.worst_fitness, "r-", linewidth=2, label="Worst")
+            axes[3].plot(x_data, log_data.best_fitness, "b-", linewidth=2, label="Best")
+            axes[3].plot(
+                x_data, log_data.worst_fitness, "r-", linewidth=2, label="Worst"
+            )
             if hasattr(log_data, "mean_fitness") and log_data.mean_fitness:
-                axes[3].plot(log_data.mean_fitness, "g--", linewidth=2, label="Mean")
+                axes[3].plot(
+                    x_data, log_data.mean_fitness, "g--", linewidth=2, label="Mean"
+                )
             axes[3].set_title("Fitness Statistics")
-            axes[3].set_xlabel("Iterations")
+            axes[3].set_xlabel("Function Evaluations")
             axes[3].set_ylabel("Fitness")
             axes[3].set_yscale("log")
             axes[3].legend()
@@ -190,31 +208,46 @@ class MultiAlgorithmPlotter:
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
         axes = axes.flatten()
 
+        # Use evaluations as x-axis
+        x_data = (
+            log_data.evaluations
+            if hasattr(log_data, "evaluations") and log_data.evaluations
+            else (
+                range(len(log_data.best_fitness))
+                if hasattr(log_data, "best_fitness")
+                else []
+            )
+        )
+
         # Plot 1: Convergence
         if hasattr(log_data, "best_fitness") and log_data.best_fitness:
-            axes[0].semilogy(log_data.best_fitness, "b-", linewidth=2)
+            axes[0].semilogy(x_data, log_data.best_fitness, "b-", linewidth=2)
             axes[0].set_title("Best Fitness Evolution")
-            axes[0].set_xlabel("Iterations")
+            axes[0].set_xlabel("Function Evaluations")
             axes[0].set_ylabel("Best Fitness")
             axes[0].grid(True, alpha=0.3)
 
         # Plot 2: Fitness statistics
         if hasattr(log_data, "best_fitness") and log_data.best_fitness:
             if hasattr(log_data, "mean_fitness") and log_data.mean_fitness:
-                axes[1].plot(log_data.mean_fitness, "g-", linewidth=2, label="Mean")
+                axes[1].plot(
+                    x_data, log_data.mean_fitness, "g-", linewidth=2, label="Mean"
+                )
             if hasattr(log_data, "std_fitness") and log_data.std_fitness:
-                axes[1].plot(log_data.std_fitness, "r--", linewidth=2, label="Std Dev")
+                axes[1].plot(
+                    x_data, log_data.std_fitness, "r--", linewidth=2, label="Std Dev"
+                )
             axes[1].set_title("Fitness Statistics")
-            axes[1].set_xlabel("Iterations")
+            axes[1].set_xlabel("Function Evaluations")
             axes[1].set_ylabel("Fitness")
             axes[1].legend()
             axes[1].grid(True, alpha=0.3)
 
         # Plot 3: Condition number (if available)
         if hasattr(log_data, "condition_number") and log_data.condition_number:
-            axes[2].semilogy(log_data.condition_number, "m-", linewidth=2)
+            axes[2].semilogy(x_data, log_data.condition_number, "m-", linewidth=2)
             axes[2].set_title("Condition Number")
-            axes[2].set_xlabel("Iterations")
+            axes[2].set_xlabel("Function Evaluations")
             axes[2].set_ylabel("Condition Number")
             axes[2].grid(True, alpha=0.3)
 
@@ -222,9 +255,9 @@ class MultiAlgorithmPlotter:
         custom_metric = self._find_custom_metric(log_data)
         if custom_metric:
             metric_name, metric_data = custom_metric
-            axes[3].plot(metric_data, "c-", linewidth=2)
+            axes[3].plot(x_data, metric_data, "c-", linewidth=2)
             axes[3].set_title(f'{metric_name.replace("_", " ").title()}')
-            axes[3].set_xlabel("Iterations")
+            axes[3].set_xlabel("Function Evaluations")
             axes[3].set_ylabel(metric_name.replace("_", " ").title())
             axes[3].grid(True, alpha=0.3)
 
@@ -293,9 +326,14 @@ class MultiAlgorithmPlotter:
             if hasattr(log_data, parameter_name):
                 param_data = getattr(log_data, parameter_name)
                 if isinstance(param_data, list) and len(param_data) > 0:
-                    ax.plot(param_data, label=algo_name, linewidth=2, alpha=0.8)
+                    x_data = (
+                        log_data.evaluations
+                        if hasattr(log_data, "evaluations") and log_data.evaluations
+                        else range(len(param_data))
+                    )
+                    ax.plot(x_data, param_data, label=algo_name, linewidth=2, alpha=0.8)
 
-        ax.set_xlabel("Iterations")
+        ax.set_xlabel("Function Evaluations")
         ax.set_ylabel(parameter_name.replace("_", " ").title())
         ax.set_title(title or f'{parameter_name.replace("_", " ").title()} Evolution')
         ax.legend()
